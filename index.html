@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#030508">
+    <script>
+      if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controlador de Gastos Maestro V12.9</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #030508; --glass: rgba(255, 255, 255, 0.03); --border: rgba(255, 255, 255, 0.1);
+            --green: #00ffaa; --red: #ff3366; --cyan: #00e5ff; --purple: #bc13fe; --orange: #ff9500; --text: #ffffff;
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; overflow-x: hidden; }
+        .tabs { 
+            display: flex; background: rgba(0, 0, 0, 0.95); backdrop-filter: blur(10px);
+            position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000; 
+            border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom);
+        }
+        .tab-btn { flex: 1; padding: 18px 5px; border: none; background: none; color: #555; font-weight: 800; cursor: pointer; font-size: 0.6rem; letter-spacing: 1px; }
+        .tab-btn.active { color: var(--purple); border-top: 3px solid var(--purple); background: linear-gradient(to bottom, rgba(188,19,254,0.05), transparent); }
+        .container { max-width: 900px; margin: auto; padding: 15px; padding-bottom: 180px; }
+        .view { display: none; }
+        .view.active { display: block; }
+        .header-section { text-align: center; padding: 25px 0 15px 0; position: relative; }
+        .btn-privacy { position: absolute; right: 10px; top: 25px; background: none; border: 1px solid var(--border); border-radius: 50%; width: 40px; height: 40px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .btn-privacy.active { border-color: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+        .btn-privacy svg { fill: #555; width: 20px; }
+        .btn-privacy.active svg { fill: var(--cyan); }
+        .global-label { font-size: 0.75rem; color: #555; letter-spacing: 3px; font-weight: 900; text-transform: uppercase; margin-bottom: 5px; }
+        .total-label { font-size: clamp(2.8rem, 10vw, 4rem); font-weight: 900; margin: 0; line-height: 1; letter-spacing: -1px; }
+        .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+        .cat-node { background: var(--glass); padding: 18px 10px; border-radius: 20px; cursor: pointer; transition: 0.3s; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100px; border-width: 2px; border-style: solid; }
+        .border-safe { border-color: var(--green); }
+        .border-warning { border-color: var(--orange); }
+        .border-danger { border-color: var(--red); }
+        .cat-name { font-weight: 800; font-size: 0.8rem; color: #888; margin-bottom: 8px; text-transform: uppercase; }
+        .cat-amount { font-size: 1.25rem; font-weight: 900; }
+        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: rgba(255,255,255,0.04); margin-bottom: 8px; border-radius: 18px; border: 1px solid var(--border); gap: 10px; }
+        .btn-icon { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 10px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .tag-pill { background: rgba(0, 229, 255, 0.1); color: var(--cyan); padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: bold; margin-right: 4px; text-transform: uppercase; display: inline-block; margin-top: 4px; cursor: pointer; }
+        .tag-pill.active { background: var(--cyan); color: #000; }
+        .cat-tag { background: rgba(188, 19, 254, 0.15); color: var(--purple); font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; font-weight: 900; margin-bottom: 4px; display: inline-block; }
+        .fab-container { position: fixed; bottom: 85px; right: 25px; display: flex; flex-direction: column-reverse; gap: 12px; z-index: 999; align-items: center; }
+        .fab-main { width: 60px; height: 60px; background: var(--purple); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: none; cursor: pointer; box-shadow: 0 4px 20px rgba(188,19,254,0.4); transition: transform 0.3s; z-index: 1001; }
+        .fab-main.open { transform: rotate(45deg); background: #222; }
+        .fab-sub { width: 50px; height: 50px; background: #000; border-radius: 15px; display: flex; align-items: center; justify-content: center; border: 2px solid var(--cyan); cursor: pointer; opacity: 0; transform: translateY(20px) scale(0); transition: all 0.3s; pointer-events: none; }
+        .fab-container.active .fab-sub { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
+        .modal-content { background: #0a0f18; padding: 25px; border-radius: 25px; border: 1px solid var(--border); width: 85%; max-width: 350px; }
+        .glass-card { background: var(--glass); border: 1px solid var(--border); border-radius: 20px; padding: 20px; margin-bottom: 20px; }
+        input, select { background: #0f141e; color: #fff; border: 1px solid var(--border); padding: 12px; border-radius: 12px; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+        .btn-primary { background: var(--purple); color: #fff; border: none; padding: 14px; border-radius: 12px; font-weight: bold; width: 100%; cursor: pointer; }
+        .btn-outline { background: none; border: 1px solid var(--border); color: #fff; padding: 12px; border-radius: 12px; width: 100%; cursor: pointer; }
+        #detailView { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 1100; padding: 15px; overflow-y: auto; }
+        .tag-dropdown { position: absolute; background: #0a0f18; border: 1px solid var(--border); border-radius: 12px; z-index: 100; max-height: 150px; overflow-y: auto; display: none; width: 80%; }
+        .tag-option { padding: 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+        .reparto-item { display: grid; grid-template-columns: 1fr 80px; gap: 10px; align-items: center; margin-bottom: 10px; }
+        .reparto-item span { font-size: 0.8rem; font-weight: 700; color: var(--cyan); text-transform: uppercase; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header-section">
+        <button id="privacyBtn" class="btn-privacy" onclick="togglePrivacy()"><svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5z"/></svg></button>
+        <div class="global-label">Balance Global</div>
+        <div id="masterTotal" class="total-label">0.00€</div>
+    </div>
+    <div id="catsView" class="view active"><div id="menuContainer" class="cat-grid"></div></div>
+    <div id="historyView" class="view">
+        <h3 style="text-align:center; color:var(--purple); letter-spacing:2px;">ÚLTIMOS MOVIMIENTOS</h3>
+        <div id="historyList"></div>
+    </div>
+    <div id="statsView" class="view">
+        <div class="glass-card">
+            <h3 style="text-align:center; margin-top:0;">Tendencia</h3>
+            <div style="display:flex; gap:10px; margin-bottom:15px;">
+                <select id="statMonthSelector" onchange="renderStats()"></select>
+                <select id="statCatSelector" onchange="renderStats()"><option value="global">Global</option></select>
+            </div>
+            <div style="height:220px; margin-bottom:25px;"><canvas id="lineChart"></canvas></div>
+            <div style="height:180px;"><canvas id="statsChart"></canvas></div>
+            <div id="statsPeriodTotal" class="total-label" style="font-size: 2.2rem; text-align:center; margin-top:15px;">0.00€</div>
+        </div>
+    </div>
+    <div id="settingsView" class="view">
+        <div class="glass-card">
+            <h3 style="color:var(--green)">Autoreparto de Sueldo</h3>
+            <input type="number" id="monthlySalary" placeholder="Sueldo total (€)">
+            <div id="repartoConfig" style="margin-top:15px; border-top:1px solid var(--border); padding-top:15px;"></div>
+            <button class="btn-primary" style="background:var(--green); color:#000; margin-top:10px;" onclick="executeReparto()">INGRESAR Y REPARTIR</button>
+        </div>
+        <div class="glass-card">
+            <h3>Salario Hora</h3>
+            <input type="number" id="hourlyRate" placeholder="€ / Hora Neta" onchange="saveHourlyRate()">
+        </div>
+        <div class="glass-card">
+            <h3>Backup</h3>
+            <button class="btn-primary" onclick="exportData()">EXPORTAR</button>
+            <input type="file" id="importFile" accept=".json" style="margin-top:20px">
+            <button class="btn-outline" onclick="importData()">IMPORTAR</button>
+        </div>
+    </div>
+</div>
+<div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('cats', this)">CATEGORÍAS</button>
+    <button class="tab-btn" onclick="switchTab('history', this)">HISTORIAL</button>
+    <button class="tab-btn" onclick="switchTab('stats', this)">ESTADÍSTICAS</button>
+    <button class="tab-btn" onclick="switchTab('settings', this)">AJUSTES</button>
+</div>
+<div class="fab-container" id="fabMenu">
+    <button class="fab-main" onclick="toggleFab()"><svg viewBox="0 0 24 24" fill="#fff" width="32"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
+    <div class="fab-sub" style="border-color:var(--green)" onclick="showAddModal()"><svg viewBox="0 0 24 24" fill="var(--green)" width="24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg></div>
+    <div class="fab-sub" style="border-color:var(--red); width:40px; height:40px; align-self:center;" onclick="showDelModal()">✖</div>
+    <div class="fab-sub" style="border-color:var(--orange)" onclick="showCalcModal()"><svg viewBox="0 0 24 24" fill="var(--orange)" width="24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM13 7h1v2h-1V7zm0 4h1v2h-1v-2zm0 4h1v2h-1v-2zm-3-8h1v2h-1V7zm0 4h1v2h-1v-2zm0 4h1v2h-1v-2zM7 7h1v2H7V7zm0 4h1v2H7v-2zm0 4h1v2H7v-2z"/></svg></div>
+</div>
+<div id="calcModal" class="modal">
+    <div class="modal-content">
+        <h3 style="color:var(--orange);">Calculadora Vida</h3>
+        <input type="number" id="popupPrice" placeholder="Importe (€)" oninput="runPopupCalc()">
+        <div style="background:rgba(255,149,0,0.1); border:1px solid var(--orange); padding:15px; border-radius:15px; text-align:center;">
+            <div id="popupResult" style="font-size:1.8rem; font-weight:900; color:var(--orange);">0h 0m</div>
+        </div>
+        <button class="btn-outline" onclick="hideModals()" style="margin-top:20px">CERRAR</button>
+    </div>
+</div>
+<div id="detailView">
+    <div class="container">
+        <button class="btn-outline" style="width:auto; margin-bottom:15px;" onclick="closeDetail()">← VOLVER</button>
+        <div class="glass-card">
+            <h1 id="detTitle" style="text-transform:uppercase; color:var(--cyan); margin:0;"></h1>
+            <div id="detTotal" class="total-label" style="text-align:left; font-size:2.5rem;">0.00€</div>
+        </div>
+        <div id="tagSummary" class="tag-pill-container" style="margin-bottom:15px;"></div>
+        <div class="glass-card">
+            <input type="hidden" id="editIdx" value="-1">
+            <input type="text" id="itemDesc" placeholder="Concepto">
+            <input type="number" id="itemAmt" placeholder="Importe €">
+            <input type="text" id="itemTags" placeholder="Etiquetas" onfocus="toggleTagDropdown(true)" onblur="setTimeout(()=>toggleTagDropdown(false), 200)">
+            <div id="tagDropdown" class="tag-dropdown"></div>
+            <input type="date" id="itemDate">
+            <select id="itemType"><option value="ingreso">Ingreso (+)</option><option value="gasto" selected>Gasto (-)</option></select>
+            <button class="btn-primary" style="background:var(--cyan); color:#000;" onclick="addItem()">GUARDAR</button>
+        </div>
+        <div id="itemsList"></div>
+    </div>
+</div>
+<div id="addModal" class="modal"><div class="modal-content"><h3>Nueva Categoría</h3><input type="text" id="newCatName"><button class="btn-primary" onclick="addCategory()">CREAR</button><button class="btn-outline" onclick="hideModals()" style="margin-top:10px">CERRAR</button></div></div>
+<div id="delModal" class="modal"><div class="modal-content"><h3>Eliminar Categoría</h3><div id="delList"></div><button class="btn-outline" onclick="hideModals()" style="margin-top:10px">VOLVER</button></div></div>
+<script>
+    let data = JSON.parse(localStorage.getItem('finanzas_v12')) || {};
+    let activeCat = null, sChart = null, lChart = null, isPrivacy = false, activeFilter = null;
+    const ICON_EDIT = `<svg viewBox="0 0 24 24" fill="var(--cyan)" width="18"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z"/></svg>`;
+    const ICON_DEL = `<svg viewBox="0 0 24 24" fill="var(--red)" width="18"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
+    function toggleFab() { const m = document.getElementById('fabMenu'); m.classList.toggle('active'); m.querySelector('.fab-main').classList.toggle('open'); }
+    function hideModals() { document.querySelectorAll('.modal').forEach(m => m.style.display='none'); document.getElementById('fabMenu').classList.remove('active'); document.querySelector('.fab-main').classList.remove('open'); }
+    function showCalcModal() { document.getElementById('calcModal').style.display='flex'; document.getElementById('popupPrice').focus(); }
+    function showAddModal() { document.getElementById('addModal').style.display='flex'; }
+    function showDelModal() { const l = document.getElementById('delList'); l.innerHTML = ''; for(let c in data) l.innerHTML += `<div class="list-item"><strong>${c}</strong><button class="btn-icon" onclick="deleteCategory('${c}')">${ICON_DEL}</button></div>`; document.getElementById('delModal').style.display='flex'; }
+    function runPopupCalc() {
+        const r = parseFloat(localStorage.getItem('hourlyRate')) || 0, p = parseFloat(document.getElementById('popupPrice').value) || 0;
+        const res = document.getElementById('popupResult');
+        if(r > 0 && p > 0) { const th = p/r; res.innerText = `${Math.floor(th)}h ${Math.round((th%1)*60)}m`; } else res.innerText = "0h 0m";
+    }
+    function save() { localStorage.setItem('finanzas_v12', JSON.stringify(data)); renderAll(); }
+    function togglePrivacy() { isPrivacy = !isPrivacy; document.getElementById('privacyBtn').classList.toggle('active'); renderAll(); if(activeCat) renderItems(); }
+    function formatAmt(n) { return isPrivacy ? "****€" : `${n.toFixed(2)}€`; }
+    function saveHourlyRate() { localStorage.setItem('hourlyRate', document.getElementById('hourlyRate').value); if(activeCat) renderItems(); }
+    function renderAll() {
+        const cont = document.getElementById('menuContainer'); cont.innerHTML = ''; let global = 0;
+        const selCat = document.getElementById('statCatSelector'); const curVal = selCat.value;
+        selCat.innerHTML = '<option value="global">Global</option>';
+        for(let cat in data) {
+            let sum = data[cat].reduce((a,b) => a + b.amount, 0); global += sum;
+            let b = sum > 100 ? 'border-safe' : (sum >= 0 ? 'border-warning' : 'border-danger');
+            cont.innerHTML += `<div class="cat-node ${b}" onclick="openDetail('${cat}')"><span class="cat-name">${cat}</span><span class="cat-amount" style="color:${sum>=0?'var(--green)':'var(--red)'}">${formatAmt(sum)}</span></div>`;
+            selCat.add(new Option(cat.toUpperCase(), cat));
+        }
+        selCat.value = curVal;
+        document.getElementById('masterTotal').innerText = formatAmt(global);
+        document.getElementById('masterTotal').style.color = global >= 0 ? 'var(--green)' : 'var(--red)';
+        renderHistory(); renderRepartoConfig();
+    }
+    function renderHistory() {
+        const hList = document.getElementById('historyList'); hList.innerHTML = ''; let allItems = [];
+        for(let cat in data) { data[cat].forEach(item => allItems.push({...item, category: cat})); }
+        allItems.sort((a,b) => new Date(b.date) - new Date(a.date));
+        allItems.slice(0, 50).forEach(i => {
+            let tagsH = (i.tags || '').split(',').map(t => t.trim() ? `<span class="tag-pill">${t.trim()}</span>` : '').join('');
+            hList.innerHTML += `<div class="list-item"><div class="item-info"><span class="cat-tag">${i.category.toUpperCase()}</span><br><small>${i.date}</small> <strong>${i.desc}</strong><div>${tagsH}</div></div><div style="text-align:right;"><span style="color:${i.amount>=0?'var(--green)':'var(--red)'}; font-weight:900;">${formatAmt(i.amount)}</span></div></div>`;
+        });
+    }
+    function openDetail(cat) { activeCat = cat; activeFilter = null; document.getElementById('detailView').style.display='block'; document.getElementById('detTitle').innerText=cat; renderItems(); updateTagDropdown(); }
+    function closeDetail() { document.getElementById('detailView').style.display='none'; activeCat=null; renderAll(); }
+    function updateTagDropdown() { const d = document.getElementById('tagDropdown'), tSet = new Set(); data[activeCat].forEach(i => { if(i.tags) i.tags.split(',').forEach(t => tSet.add(t.trim().toLowerCase())); }); d.innerHTML = Array.from(tSet).map(t => `<div class="tag-option" onclick="selectTag('${t}')">${t.toUpperCase()}</div>`).join(''); }
+    function toggleTagDropdown(s) { document.getElementById('tagDropdown').style.display = s ? 'block' : 'none'; }
+    function selectTag(t) { const i = document.getElementById('itemTags'); let cur = i.value.split(',').map(x => x.trim()).filter(x => x); if(!cur.includes(t)) cur.push(t); i.value = cur.join(', '); toggleTagDropdown(false); }
+    function filterByTag(t) { activeFilter = (activeFilter === t) ? null : t; renderItems(); }
+    function renderItems() {
+        const list = document.getElementById('itemsList'); list.innerHTML = ''; let sum = 0, tagMap = {};
+        const rate = parseFloat(localStorage.getItem('hourlyRate')) || 0;
+        const fData = activeFilter ? data[activeCat].filter(i => i.tags && i.tags.toLowerCase().includes(activeFilter)) : data[activeCat];
+        data[activeCat].forEach(i => { if(i.tags) i.tags.split(',').forEach(t => { let tg = t.trim().toLowerCase(); if(tg) tagMap[tg] = (tagMap[tg] || 0) + i.amount; }); });
+        fData.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach((i, idx) => {
+            sum += i.amount;
+            let tagsH = (i.tags || '').split(',').map(t => t.trim() ? `<span class="tag-pill ${activeFilter === t.trim().toLowerCase() ? 'active' : ''}" onclick="filterByTag('${t.trim().toLowerCase()}')">${t.trim()}</span>` : '').join('');
+            let hH = (i.amount < 0 && rate > 0) ? `<div style="font-size:0.65rem; color:var(--orange);">⏱ ${Math.floor(Math.abs(i.amount)/rate)}h ${Math.round(((Math.abs(i.amount)/rate)%1)*60)}m</div>` : "";
+            list.innerHTML += `<div class="list-item"><div class="item-info"><small>${i.date}</small><strong>${i.desc}</strong><div>${tagsH}</div></div><div style="text-align:right;"><span style="color:${i.amount>=0?'var(--green)':'var(--red)'}; font-weight:900;">${formatAmt(i.amount)}</span>${hH}<div style="display:flex; gap:5px; margin-top:4px;"><button class="btn-icon" onclick="editItem(${idx})">${ICON_EDIT}</button><button class="btn-icon" onclick="deleteItem(${idx})">${ICON_DEL}</button></div></div></div>`;
+        });
+        document.getElementById('tagSummary').innerHTML = Object.keys(tagMap).map(t => `<span class="tag-pill ${activeFilter === t ? 'active' : ''}" onclick="filterByTag('${t}')">${t.toUpperCase()}: ${formatAmt(tagMap[t])}</span>`).join('');
+        document.getElementById('detTotal').innerText = formatAmt(sum);
+    }
+    function addItem() {
+        const d = document.getElementById('itemDesc').value, a = parseFloat(document.getElementById('itemAmt').value), dt = document.getElementById('itemDate').value, t = document.getElementById('itemType').value, tg = document.getElementById('itemTags').value, idx = parseInt(document.getElementById('editIdx').value);
+        if(d && !isNaN(a) && dt) {
+            const entry = { desc: d, amount: t === 'gasto' ? -Math.abs(a) : Math.abs(a), date: dt, tags: tg };
+            if(idx === -1) data[activeCat].push(entry); else data[activeCat][idx] = entry;
+            save(); renderItems(); resetForm(); updateTagDropdown();
+        }
+    }
+    function editItem(i) { const it = data[activeCat][i]; document.getElementById('itemDesc').value = it.desc; document.getElementById('itemAmt').value = Math.abs(it.amount); document.getElementById('itemDate').value = it.date; document.getElementById('itemTags').value = it.tags || ''; document.getElementById('itemType').value = it.amount > 0 ? 'ingreso' : 'gasto'; document.getElementById('editIdx').value = i; }
+    function deleteItem(i) { if(confirm('¿Eliminar?')) { data[activeCat].splice(i,1); save(); renderItems(); } }
+    function resetForm() { document.getElementById('editIdx').value="-1"; document.getElementById('itemDesc').value=""; document.getElementById('itemAmt').value=""; document.getElementById('itemTags').value=""; }
+    function addCategory() { const n = document.getElementById('newCatName').value.trim(); if(n && !data[n]) { data[n]=[]; save(); hideModals(); } }
+    function deleteCategory(c) { if(confirm(`¿Eliminar ${c}?`)) { delete data[c]; save(); showDelModal(); } }
+    function switchTab(t, b) { document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active')); document.querySelectorAll('.view').forEach(x => x.classList.remove('active')); b.classList.add('active'); document.getElementById(t+'View').classList.add('active'); if(t==='stats') renderStats(); if(t==='history') renderHistory(); }
+    function renderStats() {
+        const p = document.getElementById('statMonthSelector').value, cf = document.getElementById('statCatSelector').value, isA = p.length === 4;
+        let inc = 0, exp = 0, tL = [], tD = [];
+        if (isA) { tL = ['E','F','M','A','M','J','J','A','S','O','N','D']; tD = new Array(12).fill(0); } 
+        else { const [y, m] = p.split('-'); tL = Array.from({length: new Date(y,m,0).getDate()}, (_, i) => i+1); tD = new Array(tL.length).fill(0); }
+        for (let c in data) { if (cf !== 'global' && c !== cf) continue; data[c].forEach(i => { if (i.date.startsWith(p)) { let a = Math.abs(i.amount); if (i.amount > 0) inc += a; else { exp += a; let d = new Date(i.date); let idx = isA ? d.getMonth() : d.getDate()-1; if(tD[idx] !== undefined) tD[idx] += a; } } }); }
+        if (lChart) lChart.destroy();
+        lChart = new Chart(document.getElementById('lineChart'), { type: 'line', data: { labels: tL, datasets: [{ data: tD, borderColor: '#bc13fe', backgroundColor: 'rgba(188, 19, 254, 0.1)', fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
+        if (sChart) sChart.destroy();
+        sChart = new Chart(document.getElementById('statsChart'), { type: 'doughnut', data: { labels: ['Ingresos', 'Gastos'], datasets: [{ data: [inc, exp], backgroundColor: ['#00ffaa', '#ff3366'] }] }, options: { responsive: true, maintainAspectRatio: false } });
+        document.getElementById('statsPeriodTotal').innerText = formatAmt(inc - exp);
+    }
+    function renderRepartoConfig() {
+        const container = document.getElementById('repartoConfig'); const savedConfig = JSON.parse(localStorage.getItem('reparto_config')) || {};
+        container.innerHTML = ''; for(let cat in data) { const perc = savedConfig[cat] || 0; container.innerHTML += `<div class="reparto-item"><span>${cat}</span><input type="number" class="perc-input" data-cat="${cat}" value="${perc}" placeholder="%" onchange="saveRepartoConfig()"></div>`; }
+    }
+    function saveRepartoConfig() { const config = {}; document.querySelectorAll('.perc-input').forEach(input => { config[input.dataset.cat] = parseFloat(input.value) || 0; }); localStorage.setItem('reparto_config', JSON.stringify(config)); }
+    function executeReparto() {
+        const sueldo = parseFloat(document.getElementById('monthlySalary').value); if(!sueldo || sueldo <= 0) return alert("Sueldo inválido");
+        const config = JSON.parse(localStorage.getItem('reparto_config')) || {}; const today = new Date().toISOString().split('T')[0];
+        let totalPerc = 0; for(let cat in config) totalPerc += config[cat]; if(totalPerc > 100) return alert("Suma > 100%");
+        for(let cat in config) { if(config[cat] > 0) { data[cat].push({ desc: "SUELDO MENSUAL", amount: (sueldo * config[cat]) / 100, date: today, tags: "mensual" }); } }
+        document.getElementById('monthlySalary').value = ""; save(); alert("Repartido");
+    }
+    window.onload = () => { const r = localStorage.getItem('hourlyRate'); if (r) document.getElementById('hourlyRate').value = r; renderAll(); }
+    function exportData() { const b = new Blob([JSON.stringify(data)], { type: 'application/json' }), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `backup.json`; a.click(); }
+    function importData() { const f = document.getElementById('importFile').files[0]; if (!f) return; const r = new FileReader(); r.onload = (e) => { data = JSON.parse(e.target.result); save(); location.reload(); }; r.readAsText(f); }
+    renderAll();
+</script>
+</body>
+</html>
